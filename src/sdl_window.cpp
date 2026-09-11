@@ -94,6 +94,18 @@ static Uint32 SDLCALL PollControllerLightColour(void* userdata, SDL_TimerID time
     return interval;
 }
 
+namespace {
+bool g_embedded_mode = false;
+} // namespace
+
+void SetEmbeddedMode(bool enabled) {
+    g_embedded_mode = enabled;
+}
+
+bool IsEmbeddedMode() {
+    return g_embedded_mode;
+}
+
 WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controllers_,
                      std::string_view window_title)
     : width{width_}, height{height_}, controllers{*controllers_} {
@@ -121,11 +133,21 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
     SDL_SetNumberProperty(props, "flags", SDL_WINDOW_VULKAN);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
+    // --embedded: a host app (Faro) reparents this window into its own session
+    // window, so it must never become visible on its own. Create it hidden and
+    // skip every fullscreen transition - the host shows it after reparenting.
+    const bool embedded = IsEmbeddedMode();
+    if (embedded) {
+        SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
+    }
     // Creating the window directly in fullscreen avoids a visible windowed -> fullscreen
     // transition on startup. SDL sizes the window to the display and keeps the requested
     // width/height as the windowed size to restore when leaving fullscreen.
-    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN,
-                           EmulatorSettings.IsFullScreen());
+    // Skipped entirely in embedded mode (window stays hidden + windowed).
+    if (!embedded) {
+        SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN,
+                               EmulatorSettings.IsFullScreen());
+    }
     window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
     if (window == nullptr) {
@@ -145,12 +167,14 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
         LOG_ERROR(Frontend, "Error getting display mode: {}", SDL_GetError());
         error = true;
     }
-    if (!error) {
-        SDL_SetWindowFullscreenMode(
-            window, EmulatorSettings.GetFullScreenMode() == "Fullscreen" ? displayMode : NULL);
+    if (!embedded) {
+        if (!error) {
+            SDL_SetWindowFullscreenMode(
+                window, EmulatorSettings.GetFullScreenMode() == "Fullscreen" ? displayMode : NULL);
+        }
+        SDL_SetWindowFullscreen(window, EmulatorSettings.IsFullScreen());
+        SDL_SyncWindow(window);
     }
-    SDL_SetWindowFullscreen(window, EmulatorSettings.IsFullScreen());
-    SDL_SyncWindow(window);
     // The window geometry is only final once the fullscreen transition has settled; refresh
     // the cached size so the first swapchain and the splashscreen use the real drawable size.
     SDL_GetWindowSizeInPixels(window, &width, &height);

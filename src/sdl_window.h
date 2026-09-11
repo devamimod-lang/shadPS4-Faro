@@ -44,6 +44,14 @@ struct WindowSystemInfo {
     WindowSystemType type = WindowSystemType::Headless;
 };
 
+// Set by --embedded (see main.cpp): a host app (Faro) embeds this window's
+// render surface directly into its own session window via SetParent, so the
+// game window must never actually appear on screen, not even for one frame.
+// When enabled, WindowSDL creates its SDL window hidden and skips all
+// fullscreen transitions - the host shows it after reparenting.
+void SetEmbeddedMode(bool enabled);
+bool IsEmbeddedMode();
+
 class WindowSDL {
     int keyboard_grab = 0;
 

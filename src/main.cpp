@@ -21,6 +21,7 @@
 #include "core/ipc/ipc.h"
 #include "core/user_settings.h"
 #include "emulator.h"
+#include "sdl_window.h"
 #include "imgui/big_picture/big_picture.h"
 
 #ifdef _WIN32
@@ -63,6 +64,7 @@ int main(int argc, char* argv[]) {
     bool configGlobal = false;
     bool bigPicture = false;
     bool sameProcess = false;
+    bool embedded = false;
 
     std::optional<std::filesystem::path> addGameFolder;
     std::optional<std::filesystem::path> setAddonFolder;
@@ -83,6 +85,10 @@ int main(int argc, char* argv[]) {
                  "Launch the game in the same process when using Big Picture Mode");
 
     app.add_option("-f,--fullscreen", fullscreenStr, "Fullscreen mode (true|false)");
+
+    app.add_flag("--embedded", embedded,
+                 "Internal: never show the game window - a host app (Faro) embeds "
+                 "it directly into its own session window");
 
     app.add_option("--override-root", overrideRoot)->check(CLI::ExistingDirectory);
 
@@ -212,6 +218,15 @@ int main(int argc, char* argv[]) {
 
     if (showFps)
         EmulatorSettings.SetShowFpsCounter(true);
+
+    // --embedded (Faro): the game window is reparented into the host's own
+    // session window, so it must stay windowed and hidden from creation.
+    // Forced here regardless of -f/config so no fullscreen transition can
+    // ever flash on screen.
+    if (embedded) {
+        EmulatorSettings.SetFullScreen(false);
+        Frontend::SetEmbeddedMode(true);
+    }
 
     if (configClean)
         EmulatorSettings.SetConfigMode(ConfigMode::Clean);
